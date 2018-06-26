@@ -1,0 +1,116 @@
+# Service Registration and Discovery
+
+Microservices architecture require a significant amount of investment in `NoOps' or http://blogs.gartner.com/gary-olliffe/2015/01/30/microservices-guts-on-the-outside/[Outer Architecture]. One of the key components of that is service registration and discovery. Multiple microservices are composed to create an application and each microservice can scale independently. Exact location or URI of the service may not be known until its deployed, especially if its deployed in a PaaS or using Containers.
+
+_Service registration_ allows each microservice to register itself with a _registry_ using a logical name. This name is bound to a physical URI obtained from a PaaS or a Container. This logical name can then be used during _service discovery_ to discover the service by the consumers, and then invoke, the microservice. If the microservice goes down then the consumers are notified accordingly. The logical name allows the physical URI to change if the microservice is started on a different ``node'' on PaaS or a Container. The logical name also allows to register multiple physical URIs, and thus load balance, possibly metrics-driven, to distribute the requests amongst multiple microservices.
+
+There are multiple tools used for service registry and discovery. This document will highlight how to use them from a Java application.
+
+## ZooKeeper and Curator
+
+. Start ZooKeeper container
++
+[source, text]
+----
+docker run -d -p 2181:2181 fabric8/zookeeper
+----
+
+Complete details: http://blog.arungupta.me/zookeeper-microservice-registration-discovery/
+
+
+## Consul
+
+consul-registrar, consul-template
+
+. Written in Go
+. AP from CAP
+
+https://github.com/progrium/docker-consul
+https://github.com/gliderlabs/registrator
+
+## etcd
+
+https://github.com/jurmous/etcd4j
+
+. Storing application config (db urls etc.). The app starts, retrieves it's config and configures it's own components.
+. Integration with Vulcan for monitoring purposes.
+. Thinking about using it for master election for running scheduled tasks.
+. Used internally by CoreOS and Fleet.
+. Service Discovery by implementing Sidekick unit which register service information inside etcd that is consumed by HAProxy.
+. etcd used as key/value for sharing p12 and other resources across all services.
+
+## Kubernetes
+
+. http://fabric8.io/guide/services.html
+. http://paulbakker.io/kubernetes/load-balancing-kubernetes/
+
+## Eureka
+
+## OSGi
+OSGi has the "Remote Services" specification. This specification defines how OSGi services can be exposed, discovered and used remetotely. 
+All parts of the system, discovery, the topology manager and the communication protocol are plugable, which makes the spec useful
+in many different scenarios.
+The current Reference Implementation is part of Amdatu: http://amdatu.org/components/remote.html, which uses REST as communication protocol and 
+has discovery implementations including etcd, zookeeper, bonjour and slp. A demo video that explains the mechanism can be found here: https://vimeo.com/user17212182/review/111888940/cc9f8853b2.
+
+From a coding perspective, a remote service looks just like a normal Java method call. Of course some symantics are different, but it makes it
+very easy to move an already modular application to a micro services architecture.
+
+Although not part of the spec, it is possible to communicate with non OSGi, and even non Java components.
+
+## JBoss Data Grid
+
+## Snoop
+
+Snoop is an experimental registration and discovery service for Java EE based microservices.
+Check out https://github.com/ivargrimstad/snoop for more information.
+
+### Service Registration
+
+. Start the Snoop Service
+
+ docker run -it -p 8081:8080 ivargrimstad/snoop-service
+
+. To enable logging (optional)
+
+ docker exec CONTAINER_ID /opt/jboss/wildfly/bin/jboss-cli.sh –connect “/subsystem=logging/console-handler=CONSOLE:change-log-level(level="CONFIG”)“
+ docker exec CONTAINER_ID /opt/jboss/wildfly/bin/jboss-cli.sh –connect ”/subsystem=logging/logger=eu.agilejava.snoop:add(level=CONFIG)
+
+. Configure the service by editing the `application.yml` file
+
+. To register a service with snoop, all you need to do is annotate a class in the service with `@EnableSnoopClient`.
+
+Example:
+
+ @EnableSnoopClient
+ @ApplicationPath("api")
+ public class ApplicationConfig extends Application {
+    ...
+ }
+
+### Service Discovery
+
+. To discover a service, use the `@Snoop` qualifier to inject a client to the registered service.
+
+Example:
+
+ @Inject
+ @Snoop(applicationName = "snoophello")
+ private SnoopDiscoveryClient helloService;
+ ...
+    String helloResponse = helloService.simpleGet("hello")
+              .filter(r -> r.getStatus() == 200)
+              .map(r -> r.readEntity(String.class))
+              .orElse("goodbye");
+ ...
+ // or
+    try {
+       WebTarget endpoint = helloService.getServiceRoot();
+       ...
+    } catch(SnoopServiceUnavailableException e) {
+    ...
+    } 
+...
+
+ 
+## Jube
